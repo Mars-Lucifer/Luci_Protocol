@@ -27,9 +27,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +41,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.luci_protocol.R
 import com.example.luci_protocol.ui.theme.luciColors
 import kotlinx.coroutines.delay
@@ -49,27 +58,67 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         setContent {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                containerColor = luciColors.Black,
-                content = {padding: PaddingValues ->
-                    Column(
-                        modifier = Modifier
-                            .padding(padding)
-                            .padding(horizontal = 40.dp)
-                            .padding(bottom = 40.dp)
-                            .fillMaxSize(),
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        HeaderBlock("Luci Protocol") {
-                            DataBlock()
-                        }
-                        bottomMenu()
-                    }
+            val navController = rememberNavController()
+
+            NavHost(
+                navController = navController,
+                startDestination = "main"
+            ) {
+                composable("main") {
+                    MainScreen(navController, state = "main")
                 }
-            )
+                composable("settings") {
+                    SettingsScreen(navController, state = "settings")
+                }
+            }
         }
     }
+}
+
+@Composable
+fun MainScreen(navController: NavController, state: String) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = luciColors.Black,
+        content = { padding: PaddingValues ->
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .padding(horizontal = 40.dp)
+                    .padding(bottom = 40.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                HeaderBlock("Luci Protocol") {
+                    DataBlock()
+                }
+                BottomMenu(navController, state = state)
+            }
+        }
+    )
+}
+
+@Composable
+fun SettingsScreen(navController: NavController, state: String) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = luciColors.Black,
+        content = { padding: PaddingValues ->
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .padding(horizontal = 40.dp)
+                    .padding(bottom = 40.dp)
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                HeaderBlock("Настройки") {
+                    SettingsBlock()
+                }
+                BottomMenu(navController, state = state)
+            }
+        }
+    )
 }
 
 @Composable
@@ -201,37 +250,147 @@ fun Blank(ms: String) {
 }
 
 @Composable
-fun bottomMenu() {
+fun BottomMenu(navController: NavController, state: String) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Button(
-            onClick = {},
+            onClick = {
+                if (state == "main") {
+                    navController.navigate("settings")
+                } else {
+                    navController.popBackStack()
+                }
+            },
             shape = RoundedCornerShape(22.dp),
             colors = ButtonDefaults.buttonColors(containerColor = luciColors.GrayMinus),
             contentPadding = PaddingValues(22.dp)
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.settings),
-                contentDescription = "Settings",
-                modifier = Modifier.size(28.dp),
-                tint = Color.Unspecified
-            )
+            if (state == "main") {
+                Icon(
+                    painter = painterResource(id = R.drawable.settings),
+                    contentDescription = "Settings",
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.Unspecified
+                )
+            } else {
+                Icon(
+                    painter = painterResource(id = R.drawable.back),
+                    contentDescription = "Back",
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.Unspecified
+                )
+            }
         }
         Button(
             onClick = {},
             shape = RoundedCornerShape(22.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = luciColors.Red),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (state == "main") {
+                    luciColors.Red
+                } else {
+                    luciColors.GrayMinus
+                }
+            ),
             contentPadding = PaddingValues(22.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "Подключиться",
+                text = if (state == "main") { "Подключиться" } else {"Проверить"},
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 20.sp,
                 color = luciColors.White
             )
         }
+    }
+}
+
+@Composable
+fun SettingsBlock() {
+    var token by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf("") }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = luciColors.White,
+            text="__oneme_auth"
+        )
+        TextField(
+
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+                .border(width = 1.dp, color = luciColors.Stoke, shape = RoundedCornerShape(18.dp))
+            ,
+            textStyle = TextStyle(
+                color = luciColors.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
+            ),
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = luciColors.White,
+                unfocusedTextColor = luciColors.White,
+
+                focusedPlaceholderColor = luciColors.GrayText,
+                unfocusedPlaceholderColor = luciColors.GrayText,
+
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent
+            ),
+            value = token,
+            onValueChange = { token = it },
+            placeholder = {Text("{token: “abc...”, viewerId: 123456}")}
+        )
+    }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = luciColors.White,
+            text="Сервер"
+        )
+        TextField(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+                .border(width = 1.dp, color = luciColors.Stoke, shape = RoundedCornerShape(18.dp))
+            ,
+            textStyle = TextStyle(
+                color = luciColors.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
+            ),
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = luciColors.White,
+                unfocusedTextColor = luciColors.White,
+
+                focusedPlaceholderColor = luciColors.GrayText,
+                unfocusedPlaceholderColor = luciColors.GrayText,
+
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent
+            ),
+            value = server,
+            onValueChange = { server = it },
+            placeholder = {Text("Введите IP/домен сервера")},
+        )
     }
 }
