@@ -1,6 +1,11 @@
 package com.example.luci_protocol
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.VpnService
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
 import androidx.activity.SystemBarStyle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
@@ -45,6 +51,7 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat.startActivityForResult
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -54,29 +61,92 @@ import com.example.luci_protocol.ui.theme.luciColors
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+
+    private var onVpnPermissionGranted: (() -> Unit)? = null
+
+    private val vpnPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                onVpnPermissionGranted?.invoke()
+            }
+            onVpnPermissionGranted = null
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
+
         setContent {
             val navController = rememberNavController()
+            var vpnRunning by remember { mutableStateOf(false) }
 
             NavHost(
                 navController = navController,
                 startDestination = "main"
             ) {
                 composable("main") {
-                    MainScreen(navController, state = "main")
+                    MainScreen(
+                        navController = navController,
+                        state = "main",
+                        vpnEnabled = vpnRunning,
+                        startVpnAction = {
+                            startVpn(
+                                onStarted = { vpnRunning = true },
+                                onPermissionNeeded = { launch ->
+                                    onVpnPermissionGranted = launch
+                                }
+                            )
+                        },
+                        stopVpnAction = {
+                            stopVpn()
+                            vpnRunning = false
+                        }
+                    )
                 }
+
                 composable("settings") {
-                    SettingsScreen(navController, state = "settings")
+                    SettingsScreen(
+                        navController = navController,
+                        state = "settings",
+                        onCheck = { }
+                    )
                 }
             }
         }
     }
+
+    private fun startVpn(
+        onStarted: () -> Unit,
+        onPermissionNeeded: ((() -> Unit) -> Unit)
+    ) {
+        val intent = VpnService.prepare(this)
+        if (intent != null) {
+            onPermissionNeeded {
+                startService(Intent(this, MyVpnService::class.java))
+                onStarted()
+            }
+            vpnPermissionLauncher.launch(intent)
+        } else {
+            startService(Intent(this, MyVpnService::class.java))
+            onStarted()
+        }
+    }
+
+    private fun stopVpn() {
+        val intent = Intent(this, MyVpnService::class.java)
+        stopService(intent)
+    }
 }
 
+
 @Composable
-fun MainScreen(navController: NavController, state: String) {
+fun MainScreen(
+    navController: NavController,
+    state: String,
+    vpnEnabled: Boolean,
+    startVpnAction: () -> Unit,
+    stopVpnAction: () -> Unit
+) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = luciColors.Black,
@@ -92,14 +162,25 @@ fun MainScreen(navController: NavController, state: String) {
                 HeaderBlock("Luci Protocol") {
                     DataBlock()
                 }
-                BottomMenu(navController, state = state)
+                BottomMenu(
+                    navController = navController,
+                    state = state,
+                    vpnEnabled = vpnEnabled,
+                    startVpnAction = startVpnAction,
+                    stopVpnAction = stopVpnAction,
+                    onCheck = { }
+                )
             }
         }
     )
 }
 
 @Composable
-fun SettingsScreen(navController: NavController, state: String) {
+fun SettingsScreen(
+    navController: NavController,
+    state: String,
+    onCheck: () -> Unit
+) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = luciColors.Black,
@@ -115,7 +196,14 @@ fun SettingsScreen(navController: NavController, state: String) {
                 HeaderBlock("Настройки") {
                     SettingsBlock()
                 }
-                BottomMenu(navController, state = state)
+                BottomMenu(
+                    navController = navController,
+                    state = state,
+                    vpnEnabled = false,
+                    startVpnAction = {},
+                    stopVpnAction = {},
+                    onCheck = onCheck
+                )
             }
         }
     )
@@ -250,11 +338,20 @@ fun Blank(ms: String) {
 }
 
 @Composable
-fun BottomMenu(navController: NavController, state: String) {
+fun BottomMenu(
+    navController: NavController,
+    state: String,
+    vpnEnabled: Boolean,
+    startVpnAction: () -> Unit,
+    stopVpnAction: () -> Unit,
+    onCheck: () -> Unit
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
+
+        // 1. Settings / Back
         Button(
             onClick = {
                 if (state == "main") {
@@ -267,39 +364,51 @@ fun BottomMenu(navController: NavController, state: String) {
             colors = ButtonDefaults.buttonColors(containerColor = luciColors.GrayMinus),
             contentPadding = PaddingValues(22.dp)
         ) {
-            if (state == "main") {
-                Icon(
-                    painter = painterResource(id = R.drawable.settings),
-                    contentDescription = "Settings",
-                    modifier = Modifier.size(28.dp),
-                    tint = Color.Unspecified
-                )
-            } else {
-                Icon(
-                    painter = painterResource(id = R.drawable.back),
-                    contentDescription = "Back",
-                    modifier = Modifier.size(28.dp),
-                    tint = Color.Unspecified
-                )
-            }
+            Icon(
+                painter = painterResource(
+                    id = if (state == "main")
+                        R.drawable.settings
+                    else
+                        R.drawable.back
+                ),
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = Color.Unspecified
+            )
         }
+
+        // 2. Главная кнопка (меняется по state)
         Button(
-            onClick = {},
+            onClick = {
+                if (state == "main") {
+                    if (!vpnEnabled) startVpnAction() else stopVpnAction()
+                } else {
+                    onCheck()
+                }
+            },
             shape = RoundedCornerShape(22.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (state == "main") {
-                    luciColors.Red
-                } else {
-                    luciColors.GrayMinus
+                containerColor = when {
+                    state == "settings" -> luciColors.GrayMinus
+                    vpnEnabled -> luciColors.GrayMinus
+                    else -> luciColors.Red
                 }
             ),
             contentPadding = PaddingValues(22.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = if (state == "main") { "Подключиться" } else {"Проверить"},
+                text = when (state) {
+                    "main" ->
+                        if (!vpnEnabled) "Подключиться" else "Отключиться"
+
+                    "settings" ->
+                        "Проверить"
+
+                    else -> ""
+                },
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 color = luciColors.White
             )
         }
