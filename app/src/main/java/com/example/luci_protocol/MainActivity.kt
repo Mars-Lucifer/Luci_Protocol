@@ -3,7 +3,6 @@ package com.example.luci_protocol
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.net.VpnService
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -22,7 +21,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
 import androidx.activity.SystemBarStyle
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
@@ -59,18 +57,19 @@ import androidx.navigation.compose.rememberNavController
 import com.example.luci_protocol.R
 import com.example.luci_protocol.ui.theme.luciColors
 import kotlinx.coroutines.delay
+import android.net.VpnService
+import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : ComponentActivity() {
 
     private var onVpnPermissionGranted: (() -> Unit)? = null
 
-    private val vpnPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                onVpnPermissionGranted?.invoke()
-            }
-            onVpnPermissionGranted = null
+    // Регистрация коллбека для запроса разрешения на VPN
+    private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            onVpnPermissionGranted?.invoke()
         }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,22 +79,14 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             var vpnRunning by remember { mutableStateOf(false) }
 
-            NavHost(
-                navController = navController,
-                startDestination = "main"
-            ) {
+            NavHost(navController = navController, startDestination = "main") {
                 composable("main") {
                     MainScreen(
                         navController = navController,
                         state = "main",
                         vpnEnabled = vpnRunning,
                         startVpnAction = {
-                            startVpn(
-                                onStarted = { vpnRunning = true },
-                                onPermissionNeeded = { launch ->
-                                    onVpnPermissionGranted = launch
-                                }
-                            )
+                            startVpn { vpnRunning = true }
                         },
                         stopVpnAction = {
                             stopVpn()
@@ -108,6 +99,9 @@ class MainActivity : ComponentActivity() {
                     SettingsScreen(
                         navController = navController,
                         state = "settings",
+                        vpnEnabled = vpnRunning,
+                        startVpnAction = { startVpn { vpnRunning = true } },
+                        stopVpnAction = { stopVpn(); vpnRunning = false },
                         onCheck = { }
                     )
                 }
@@ -115,29 +109,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startVpn(
-        onStarted: () -> Unit,
-        onPermissionNeeded: ((() -> Unit) -> Unit)
-    ) {
+    private fun startVpn(onStarted: () -> Unit) {
         val intent = VpnService.prepare(this)
         if (intent != null) {
-            onPermissionNeeded {
+            // Разрешение еще не получено, запрашиваем у пользователя
+            onVpnPermissionGranted = {
                 startService(Intent(this, MyVpnService::class.java))
                 onStarted()
             }
             vpnPermissionLauncher.launch(intent)
         } else {
+            // Разрешение уже есть
             startService(Intent(this, MyVpnService::class.java))
             onStarted()
         }
     }
 
     private fun stopVpn() {
-        val intent = Intent(this, MyVpnService::class.java)
-        stopService(intent)
+        val intent = Intent(this, MyVpnService::class.java).apply {
+            action = "STOP"
+        }
+        startService(intent)
     }
 }
-
 
 @Composable
 fun MainScreen(
@@ -179,6 +173,9 @@ fun MainScreen(
 fun SettingsScreen(
     navController: NavController,
     state: String,
+    vpnEnabled: Boolean, // Добавлено
+    startVpnAction: () -> Unit, // Добавлено
+    stopVpnAction: () -> Unit,  // Добавлено
     onCheck: () -> Unit
 ) {
     Scaffold(
@@ -186,22 +183,16 @@ fun SettingsScreen(
         containerColor = luciColors.Black,
         content = { padding: PaddingValues ->
             Column(
-                modifier = Modifier
-                    .padding(padding)
-                    .padding(horizontal = 40.dp)
-                    .padding(bottom = 40.dp)
-                    .fillMaxSize(),
+                modifier = Modifier.padding(padding).padding(horizontal = 40.dp).padding(bottom = 40.dp).fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                HeaderBlock("Настройки") {
-                    SettingsBlock()
-                }
+                HeaderBlock("Настройки") { SettingsBlock() }
                 BottomMenu(
                     navController = navController,
                     state = state,
-                    vpnEnabled = false,
-                    startVpnAction = {},
-                    stopVpnAction = {},
+                    vpnEnabled = vpnEnabled,
+                    startVpnAction = startVpnAction,
+                    stopVpnAction = stopVpnAction,
                     onCheck = onCheck
                 )
             }

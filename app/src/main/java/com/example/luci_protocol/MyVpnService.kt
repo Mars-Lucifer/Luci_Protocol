@@ -5,87 +5,73 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.FileInputStream
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicBoolean
 
-class MyVpnService : VpnService(), Runnable {
-
-    private var thread: Thread? = null
+class MyVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var input: FileInputStream? = null
-    private val running = AtomicBoolean(false)
+    private var isRunning = false
+    private var vpnThread: Thread? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.e("VPN", "onStartCommand")
-        if (thread != null) return START_NOT_STICKY
+        if (intent?.action == "STOP") {
+            stopVpn()
+            return START_NOT_STICKY
+        }
 
-        running.set(true)
-        thread = Thread(this, "MyVpnThread").also { it.start() }
-        return START_NOT_STICKY
+        if (!isRunning) {
+            startVpn()
+        }
+        return START_STICKY
     }
 
-    override fun run() {
+    private fun startVpn() {
         try {
             val builder = Builder()
-                .setSession("VPN")
                 .addAddress("10.0.0.2", 24)
-                .addRoute("0.0.0.0", 0)
+                .addRoute("0.0.0.0", 0) // Перехватываем весь IPv4 трафик
+                .setSession("LuciProtocol")
+                .setMtu(1500)
 
             vpnInterface = builder.establish()
-            if (vpnInterface == null) {
-                Log.e("VPN", "establish() returned null")
-                stopSelf()
-                return
-            }
+            isRunning = true
 
-            input = FileInputStream(vpnInterface!!.fileDescriptor)
-            val buffer = ByteArray(32767)
-
-            while (running.get()) {
-                val len = try {
-                    input?.read(buffer) ?: -1
-                } catch (e: IOException) {
-                    Log.e("VPN", "read() interrupted: ${e.message}")
-                    break
-                }
-
-                if (len > 0) {
-                    Log.d("VPN", "Packet size: $len")
-                } else if (len < 0) {
-                    break
+            // Заглушка: поток для чтения трафика, чтобы сервис не закрывался
+            vpnThread = Thread {
+                try {
+                    val inputStream = FileInputStream(vpnInterface?.fileDescriptor)
+                    val packet = ByteArray(32767)
+                    while (isRunning && !Thread.interrupted()) {
+                        val length = inputStream.read(packet)
+                        if (length > 0) {
+                            // Здесь будет шифрование и отправка в WebSockets
+                            // Log.d("MyVpnService", "Прочитан пакет размером: $length")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MyVpnService", "Ошибка потока VPN", e)
                 }
             }
+            vpnThread?.start()
+
         } catch (e: Exception) {
-            Log.e("VPN", "Unexpected error: ${e.message}", e)
-        } finally {
-            releaseResources()
+            Log.e("MyVpnService", "Не удалось запустить VPN", e)
+            stopVpn()
         }
     }
 
-    override fun onDestroy() {
-        Log.e("VPN", "onDestroy")
-        stopVpnInternal()
-        super.onDestroy()
-    }
-
-    fun stopVpn() {
-        Log.e("VPN", "stopVpn() called")
-        stopVpnInternal()
+    private fun stopVpn() {
+        isRunning = false
+        vpnThread?.interrupt()
+        try {
+            vpnInterface?.close()
+        } catch (e: Exception) {
+            Log.e("MyVpnService", "Ошибка при закрытии интерфейса", e)
+        }
+        vpnInterface = null
         stopSelf()
     }
 
-    private fun stopVpnInternal() {
-        running.set(false)
-        try { input?.close() } catch (_: Exception) {}
-        try { vpnInterface?.close() } catch (_: Exception) {}
-        thread?.interrupt()
-        thread = null
-    }
-
-    private fun releaseResources() {
-        try { input?.close() } catch (_: Exception) {}
-        try { vpnInterface?.close() } catch (_: Exception) {}
-        input = null
-        vpnInterface = null
+    override fun onDestroy() {
+        super.onDestroy()
+        stopVpn()
     }
 }
