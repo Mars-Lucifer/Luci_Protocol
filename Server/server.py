@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from crypto import BOOTSTRAP_INFO, CryptoProtocol, SecureTokenVault
+from crypto import BOOTSTRAP_INFO, CryptoProtocol, SecureTokenVault, ensure_bootstrap_key
 from vpn import MaxTransportConfig, MaxVpnSession
 
 
@@ -359,66 +359,73 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    args = build_arg_parser().parse_args()
-    config = ServerConfig.from_env()
-
-    if args.host:
-        config = ServerConfig(
-            host=args.host,
-            port=config.port,
-            ws_uri=config.ws_uri,
-            origin=config.origin,
-            user_agent=config.user_agent,
-            delete_opcode=config.delete_opcode,
-            default_max_message_size=config.default_max_message_size,
-            heartbeat_interval_seconds=config.heartbeat_interval_seconds,
-            rotation_interval_seconds=config.rotation_interval_seconds,
-            request_timeout_seconds=config.request_timeout_seconds,
-            connect_ready_timeout_seconds=config.connect_ready_timeout_seconds,
-            handshake_private_key_pem=config.handshake_private_key_pem,
-        )
-    if args.port:
-        config = ServerConfig(
-            host=config.host,
-            port=args.port,
-            ws_uri=config.ws_uri,
-            origin=config.origin,
-            user_agent=config.user_agent,
-            delete_opcode=config.delete_opcode,
-            default_max_message_size=config.default_max_message_size,
-            heartbeat_interval_seconds=config.heartbeat_interval_seconds,
-            rotation_interval_seconds=config.rotation_interval_seconds,
-            request_timeout_seconds=config.request_timeout_seconds,
-            connect_ready_timeout_seconds=config.connect_ready_timeout_seconds,
-            handshake_private_key_pem=config.handshake_private_key_pem,
-        )
-
-    manager = SessionManager(config)
-
-    if args.print_bootstrap_public_key:
-        print(manager.bootstrap_public_key)
-        return
-
-    print(f"Listening on http://{config.host}:{config.port}")
-    print(
-        "POST /connect/max with {'action':'bootstrap'} to get the bootstrap public key."
-    )
-    print("Bootstrap public key:")
-    print(manager.bootstrap_public_key)
-
-    httpd = LuciHttpServer(
-        (config.host, config.port),
-        ConnectHandler,
-        session_manager=manager,
-    )
-
+    ensure_bootstrap_key("bootstrap_private_key.pem")
     try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        httpd.server_close()
-        manager.shutdown_all()
+        config = ServerConfig.from_env()
+
+        args = build_arg_parser().parse_args()
+        config = ServerConfig.from_env()
+
+        if args.host:
+            config = ServerConfig(
+                host=args.host,
+                port=config.port,
+                ws_uri=config.ws_uri,
+                origin=config.origin,
+                user_agent=config.user_agent,
+                delete_opcode=config.delete_opcode,
+                default_max_message_size=config.default_max_message_size,
+                heartbeat_interval_seconds=config.heartbeat_interval_seconds,
+                rotation_interval_seconds=config.rotation_interval_seconds,
+                request_timeout_seconds=config.request_timeout_seconds,
+                connect_ready_timeout_seconds=config.connect_ready_timeout_seconds,
+                handshake_private_key_pem=config.handshake_private_key_pem,
+            )
+        if args.port:
+            config = ServerConfig(
+                host=config.host,
+                port=args.port,
+                ws_uri=config.ws_uri,
+                origin=config.origin,
+                user_agent=config.user_agent,
+                delete_opcode=config.delete_opcode,
+                default_max_message_size=config.default_max_message_size,
+                heartbeat_interval_seconds=config.heartbeat_interval_seconds,
+                rotation_interval_seconds=config.rotation_interval_seconds,
+                request_timeout_seconds=config.request_timeout_seconds,
+                connect_ready_timeout_seconds=config.connect_ready_timeout_seconds,
+                handshake_private_key_pem=config.handshake_private_key_pem,
+            )
+
+        manager = SessionManager(config)
+
+        if args.print_bootstrap_public_key:
+            print(manager.bootstrap_public_key)
+            return
+
+        print(f"Listening on http://{config.host}:{config.port}")
+        print(
+            "POST /connect/max with {'action':'bootstrap'} to get the bootstrap public key."
+        )
+        print("Bootstrap public key:")
+        print(manager.bootstrap_public_key)
+
+        httpd = LuciHttpServer(
+            (config.host, config.port),
+            ConnectHandler,
+            session_manager=manager,
+        )
+
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            httpd.server_close()
+            manager.shutdown_all()
+
+    except Exception as e:
+        print(f"Ошибка при запуске: {e}")
 
 
 if __name__ == "__main__":

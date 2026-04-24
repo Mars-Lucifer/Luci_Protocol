@@ -5,6 +5,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -170,3 +171,16 @@ class SecureTokenVault:
                 key_version=self._key_version,
                 updated_at=self._updated_at,
             )
+
+def ensure_bootstrap_key(key_path: str = "bootstrap_private_key.pem") -> None:
+        path = Path(key_path)
+        if not path.exists():
+            print(f"[*] Ключ {key_path} не найден. Генерирую новый...")
+            # Используем ваш статический метод из класса CryptoProtocol
+            private_pem = CryptoProtocol.generate_private_pem()
+            path.write_bytes(private_pem)
+            # Устанавливаем права доступа (чтение/запись только для владельца)
+            path.chmod(0o600)
+            print(f"[+] Ключ успешно создан и сохранен в {key_path}")
+        else:
+            print(f"[+] Используется существующий ключ: {key_path}")
