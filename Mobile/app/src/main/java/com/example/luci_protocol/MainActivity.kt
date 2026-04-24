@@ -102,7 +102,9 @@ class MainActivity : ComponentActivity() {
                         vpnEnabled = vpnRunning,
                         startVpnAction = { startVpn { vpnRunning = true } },
                         stopVpnAction = { stopVpn(); vpnRunning = false },
-                        onCheck = { }
+                        onCheck = {
+                            // Здесь можно добавить проверку настроек
+                        }
                     )
                 }
             }
@@ -173,11 +175,16 @@ fun MainScreen(
 fun SettingsScreen(
     navController: NavController,
     state: String,
-    vpnEnabled: Boolean, // Добавлено
-    startVpnAction: () -> Unit, // Добавлено
-    stopVpnAction: () -> Unit,  // Добавлено
+    vpnEnabled: Boolean,
+    startVpnAction: () -> Unit,
+    stopVpnAction: () -> Unit,
     onCheck: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("vpn_settings", Context.MODE_PRIVATE) }
+    var token by remember { mutableStateOf(prefs.getString("max_token", "") ?: "") }
+    var server by remember { mutableStateOf(prefs.getString("server_address", "") ?: "") }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = luciColors.Black,
@@ -186,7 +193,20 @@ fun SettingsScreen(
                 modifier = Modifier.padding(padding).padding(horizontal = 40.dp).padding(bottom = 40.dp).fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                HeaderBlock("Настройки") { SettingsBlock() }
+                HeaderBlock("Настройки") {
+                    SettingsBlock(
+                        token = token,
+                        onTokenChange = { 
+                            token = it
+                            prefs.edit().putString("max_token", it).apply()
+                        },
+                        server = server,
+                        onServerChange = { 
+                            server = it
+                            prefs.edit().putString("server_address", it).apply()
+                        }
+                    )
+                }
                 BottomMenu(
                     navController = navController,
                     state = state,
@@ -407,9 +427,12 @@ fun BottomMenu(
 }
 
 @Composable
-fun SettingsBlock() {
-    var token by remember { mutableStateOf("") }
-    var server by remember { mutableStateOf("") }
+fun SettingsBlock(
+    token: String,
+    onTokenChange: (String) -> Unit,
+    server: String,
+    onServerChange: (String) -> Unit
+) {
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
@@ -421,12 +444,10 @@ fun SettingsBlock() {
             text="__oneme_auth"
         )
         TextField(
-
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp)
-                .border(width = 1.dp, color = luciColors.Stoke, shape = RoundedCornerShape(18.dp))
-            ,
+                .padding(vertical = 18.dp)
+                .border(width = 1.dp, color = luciColors.Stoke, shape = RoundedCornerShape(18.dp)),
             textStyle = TextStyle(
                 color = luciColors.White,
                 fontWeight = FontWeight.SemiBold,
@@ -435,21 +456,18 @@ fun SettingsBlock() {
             colors = TextFieldDefaults.colors(
                 focusedTextColor = luciColors.White,
                 unfocusedTextColor = luciColors.White,
-
                 focusedPlaceholderColor = luciColors.GrayText,
                 unfocusedPlaceholderColor = luciColors.GrayText,
-
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
                 disabledContainerColor = Color.Transparent,
-
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
                 disabledIndicatorColor = Color.Transparent
             ),
             value = token,
-            onValueChange = { token = it },
-            placeholder = {Text("{token: “abc...”, viewerId: 123456}")}
+            onValueChange = onTokenChange,
+            placeholder = {Text("{token: \"abc...\", viewerId: 123456}")}
         )
     }
     Column(
@@ -465,9 +483,8 @@ fun SettingsBlock() {
         TextField(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp)
-                .border(width = 1.dp, color = luciColors.Stoke, shape = RoundedCornerShape(18.dp))
-            ,
+                .padding(vertical = 18.dp)
+                .border(width = 1.dp, color = luciColors.Stoke, shape = RoundedCornerShape(18.dp)),
             textStyle = TextStyle(
                 color = luciColors.White,
                 fontWeight = FontWeight.SemiBold,
@@ -476,20 +493,17 @@ fun SettingsBlock() {
             colors = TextFieldDefaults.colors(
                 focusedTextColor = luciColors.White,
                 unfocusedTextColor = luciColors.White,
-
                 focusedPlaceholderColor = luciColors.GrayText,
                 unfocusedPlaceholderColor = luciColors.GrayText,
-
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
                 disabledContainerColor = Color.Transparent,
-
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
                 disabledIndicatorColor = Color.Transparent
             ),
             value = server,
-            onValueChange = { server = it },
+            onValueChange = onServerChange,
             placeholder = {Text("Введите IP/домен сервера")},
         )
     }
